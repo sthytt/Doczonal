@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Doczonal (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Doczonal (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
