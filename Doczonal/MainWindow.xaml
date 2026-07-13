@@ -21,18 +21,25 @@
 
         <CommandBar Grid.Row="0" DefaultLabelPosition="Right">
             <AppBarButton
+                x:Name="LoadButton"
                 Click="LoadImage_Click"
                 Icon="OpenFile"
                 Label="Load   " />
             <AppBarButton
+                x:Name="DrawButton"
+                IsEnabled="False"
                 Click="DrawMode_Click"
                 Icon="Add"
                 Label="Draw" />
             <AppBarButton
+                x:Name="SelectButton"
+                IsEnabled="False"
                 Click="SelectMode_Click"
                 Icon="Edit"
                 Label="Drag" />
             <AppBarButton
+                x:Name="ClearButton"
+                IsEnabled="False"
                 Click="ClearZones_Click"
                 Icon="Clear"
                 Label="Clear All" />
@@ -60,6 +67,7 @@
                     <Image x:Name="BackgroundImage" Stretch="Uniform" />
                     <Canvas
                         x:Name="DrawingCanvas"
+                        IsHitTestVisible="False"
                         Background="Transparent"
                         PointerMoved="Canvas_PointerMoved"
                         PointerPressed="Canvas_PointerPressed"
