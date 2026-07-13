@@ -43,6 +43,12 @@
                 Click="ClearZones_Click"
                 Icon="Clear"
                 Label="Clear All" />
+            <AppBarButton
+                x:Name="SettingsButton"
+                IsEnabled="False"
+                Click="Settings_Click"
+                Icon="Setting"
+                Label="Settings" />
             <AppBarSeparator />
             <AppBarButton
                 Margin="40,0,0,0"

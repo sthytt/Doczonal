@@ -36,25 +36,19 @@ namespace Doczonal
         private Grid _currentGrid;
         private bool _isResizing = false;
         private Grid _resizingGrid = null;
-        private const double MinZoneWidth = 20;
-        private const double MinZoneHeight = 20;
+        private const double MinZoneWidth = 10;
+        private const double MinZoneHeight = 10;
 
         public ViewModels.MainViewModel ViewModel { get; } = new ViewModels.MainViewModel();
 
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MainWindow"/> class.
-        /// </summary>
+        // Initializes MainWindow
         public MainWindow()
         {
             this.InitializeComponent();
         }
 
-        /// <summary>
-        /// Handles the event when the Load button is clicked. Opens a file picker to select an image.
-        /// </summary>
-        /// <param name="sender">The object that raised the event.</param>
-        /// <param name="e">The event data.</param>
+        // Handles Load button click: opens a file picker and loads selected image or first page of PDF for preview
         private async void LoadImage_Click(object sender, RoutedEventArgs e)
         {
             var picker = new FileOpenPicker();
@@ -125,11 +119,7 @@ namespace Doczonal
                 _isLoaded = true;
         }
 
-        /// <summary>
-        /// Handles the event when the Done button is clicked. Gathers all zones and displays them in a dialog.
-        /// </summary>
-        /// <param name="sender">The object that raised the event.</param>
-        /// <param name="e">The event data.</param>
+        // Handles Done button click: runs batch OCR over selected folder and exports CSV
         private async void Done_Click(object sender, RoutedEventArgs e)
         {
             var zones = DrawingCanvas.Children.OfType<Grid>().Select(g => new
@@ -170,38 +160,13 @@ namespace Doczonal
             var allResults = new List<Dictionary<string, string>>();
             string dataPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "tessdata");
 
-            // One engine reused across the whole batch, instead of one per zone/image.
-            using (var engine = new TesseractEngine(dataPath, "fin", EngineMode.Default))
-            {
-                foreach (var imageFile in imageFiles)
-                {
-                    var row = new Dictionary<string, string> { ["File_name"] = imageFile.Name };
+            // Batch OCR using BatchOcrService which manages TesseractEngine reuse and returns confidences
+            var tessdataPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "tessdata");
+            var zoneModels = ViewModel.Zones.ToList();
+            var batchResults = await BatchOcrService.ProcessFilesAsync(imageFiles, zoneModels, ImageContainer.Width, ImageContainer.Height, tessdataPath, "fin");
+            allResults.AddRange(batchResults);
 
-                    string pixPath = imageFile.Path;
-                    var ext = System.IO.Path.GetExtension(imageFile.Path).ToLowerInvariant();
-                    if (ext == ".pdf")
-                    {
-                        pixPath = await RenderPdfFirstPageToPngAsync(imageFile.Path);
-                    }
-
-                    using (var pix = Pix.LoadFromFile(pixPath))
-                    {
-                        foreach (var zone in zones)
-                        {
-                            Tesseract.Rect region = ScaleZoneToImage(zone.X, zone.Y, zone.Width, zone.Height, pix.Width, pix.Height);
-
-                            using (var page = engine.Process(pix, region))
-                            {
-                                row[zone.Label] = page.GetText().Trim();
-                            }
-                        }
-                    }
-
-                    allResults.Add(row);
-                }
-            }
-
-            ExportToCsv(allResults, System.IO.Path.Combine(folder.Path, "ocr_results.csv"));
+            CsvExporter.Export(allResults, System.IO.Path.Combine(folder.Path, "ocr_results.csv"));
 
             var doneDialog = new ContentDialog
             {
@@ -215,18 +180,36 @@ namespace Doczonal
 
         private Tesseract.Rect ScaleZoneToImage(double zoneX, double zoneY, double zoneWidth, double zoneHeight, int imageWidth, int imageHeight)
         {
-            const double canvasWidth = 1000;
-            const double canvasHeight = 1000;
+            // Map zone coordinates (which are relative to the DrawingCanvas/ImageContainer)
+            // to the actual image pixel coordinates, taking into account uniform scaling
+            // (letterboxing) performed by the preview image (Stretch = Uniform).
+            double containerW = ImageContainer.Width;
+            double containerH = ImageContainer.Height;
 
-            double scaleX = imageWidth / canvasWidth;
-            double scaleY = imageHeight / canvasHeight;
+            if (containerW <= 0 || containerH <= 0 || imageWidth <= 0 || imageHeight <= 0)
+            {
+                return new Tesseract.Rect(0, 0, (int)zoneWidth, (int)zoneHeight);
+            }
 
-            return new Tesseract.Rect(
-                (int)(zoneX * scaleX),
-                (int)(zoneY * scaleY),
-                (int)(zoneWidth * scaleX),
-                (int)(zoneHeight * scaleY)
-            );
+            double scale = Math.Min(containerW / imageWidth, containerH / imageHeight);
+            double displayImageW = imageWidth * scale;
+            double displayImageH = imageHeight * scale;
+            double offsetX = (containerW - displayImageW) / 2.0;
+            double offsetY = (containerH - displayImageH) / 2.0;
+
+            // Convert canvas coords -> image pixel coords
+            double imgX = (zoneX - offsetX) / scale;
+            double imgY = (zoneY - offsetY) / scale;
+            double imgW = zoneWidth / scale;
+            double imgH = zoneHeight / scale;
+
+            // Clamp
+            if (imgX < 0) imgX = 0;
+            if (imgY < 0) imgY = 0;
+            if (imgX + imgW > imageWidth) imgW = imageWidth - imgX;
+            if (imgY + imgH > imageHeight) imgH = imageHeight - imgY;
+
+            return new Tesseract.Rect((int)Math.Round(imgX), (int)Math.Round(imgY), (int)Math.Round(imgW), (int)Math.Round(imgH));
         }
 
         private void ExportToCsv(List<Dictionary<string, string>> allResults, string outputPath)
@@ -240,8 +223,7 @@ namespace Doczonal
                 csv.AppendLine(string.Join(",", allHeaders.Select(h =>
                     row.TryGetValue(h, out var v) ? $"\"{v.Replace("\"", "\"\"")}\"" : "")));
             }
-
-            File.WriteAllText(outputPath, csv.ToString());
+            File.WriteAllText(outputPath, csv.ToString(), new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
         }
 
         // Helper: get bounding rect for a grid on the canvas
@@ -268,11 +250,7 @@ namespace Doczonal
             return false;
         }
 
-        /// <summary>
-        /// Placeholder event handler for choosing a folder.
-        /// </summary>
-        /// <param name="sender">The object that raised the event.</param>
-        /// <param name="e">The event data.</param>
+        // Placeholder handler for choosing a folder and running OCR export
         private async void ChooseFolder_click(object sender, RoutedEventArgs e)
         {
             if (ViewModel.Zones.Count == 0)
@@ -341,7 +319,7 @@ namespace Doczonal
                     // crop and OCR
                     try
                     {
-                        var tempPath = await CropImageAsync(file.Path, z);
+                        var tempPath = await ImageService.CropImageAsync(file.Path, z, ImageContainer.Width, ImageContainer.Height);
                         var text = ocr.ProcessImage(tempPath)?.Replace('\r', ' ').Replace('\n', ' ').Trim();
                         row.Add(EscapeCsv(text ?? ""));
                     }
@@ -356,7 +334,8 @@ namespace Doczonal
             }
 
             var outPath = System.IO.Path.Combine(folder.Path, "ocr_output.csv");
-            File.WriteAllText(outPath, sb.ToString());
+            // Write CSV using UTF-8 with BOM so Excel and other programs correctly detect Finnish characters (ä/ö/å)
+            File.WriteAllText(outPath, sb.ToString(), new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
             var done = new ContentDialog
             {
@@ -394,15 +373,31 @@ namespace Doczonal
                 var decoder = await BitmapDecoder.CreateAsync(stream);
 
                 // Determine scale between displayed container and actual image pixels
-                double displayWidth = ImageContainer.Width;
-                double displayHeight = ImageContainer.Height;
-                double scaleX = (displayWidth > 0) ? (double)decoder.PixelWidth / displayWidth : 1.0;
-                double scaleY = (displayHeight > 0) ? (double)decoder.PixelHeight / displayHeight : 1.0;
+                // Need to account for how the preview image is displayed inside ImageContainer
+                // (Stretch = Uniform). Compute scale and offsets to map canvas coordinates
+                // to image pixel coordinates correctly even if the image is letterboxed.
+                double containerW = ImageContainer.Width;
+                double containerH = ImageContainer.Height;
+                int imgPixelW = (int)decoder.PixelWidth;
+                int imgPixelH = (int)decoder.PixelHeight;
 
-                uint x = (uint)Math.Max(0, Math.Round(zone.X * scaleX));
-                uint y = (uint)Math.Max(0, Math.Round(zone.Y * scaleY));
-                uint w = (uint)Math.Max(1, Math.Round(zone.Width * scaleX));
-                uint h = (uint)Math.Max(1, Math.Round(zone.Height * scaleY));
+                double scale = Math.Min(containerW / imgPixelW, containerH / imgPixelH);
+                if (double.IsInfinity(scale) || scale <= 0) scale = 1.0;
+
+                double displayImgW = imgPixelW * scale;
+                double displayImgH = imgPixelH * scale;
+                double offsetX = (containerW - displayImgW) / 2.0;
+                double offsetY = (containerH - displayImgH) / 2.0;
+
+                double imgXf = (zone.X - offsetX) / scale;
+                double imgYf = (zone.Y - offsetY) / scale;
+                double imgWf = zone.Width / scale;
+                double imgHf = zone.Height / scale;
+
+                uint x = (uint)Math.Max(0, Math.Round(imgXf));
+                uint y = (uint)Math.Max(0, Math.Round(imgYf));
+                uint w = (uint)Math.Max(1, Math.Round(imgWf));
+                uint h = (uint)Math.Max(1, Math.Round(imgHf));
 
                 // clamp
                 if (x + w > decoder.PixelWidth) w = decoder.PixelWidth - x;
@@ -464,36 +459,20 @@ namespace Doczonal
             }
         }
 
-        /// <summary>
-        /// Switches the application interaction mode to drawing mode.
-        /// </summary>
-        /// <param name="sender">The object that raised the event.</param>
-        /// <param name="e">The event data.</param>
+        // Switch to drawing mode
         private void DrawMode_Click(object sender, RoutedEventArgs e) => _isDrawingMode = true;
 
-        /// <summary>
-        /// Switches the application interaction mode to selection/drag mode.
-        /// </summary>
-        /// <param name="sender">The object that raised the event.</param>
-        /// <param name="e">The event data.</param>
+        // Switch to selection/drag mode
         private void SelectMode_Click(object sender, RoutedEventArgs e) => _isDrawingMode = false;
 
-        /// <summary>
-        /// Clears all drawn zones from the canvas.
-        /// </summary>
-        /// <param name="sender">The object that raised the event.</param>
-        /// <param name="e">The event data.</param>
+        // Clear all drawn zones from the canvas and the ViewModel
         private void ClearZones_Click(object sender, RoutedEventArgs e)
         {
             DrawingCanvas.Children.Clear();
             ViewModel.Zones.Clear();
         }
 
-        /// <summary>
-        /// Handles pointer pressed events on the canvas, initiating the drawing of a new zone.
-        /// </summary>
-        /// <param name="sender">The canvas that raised the event.</param>
-        /// <param name="e">The pointer event details.</param>
+        // Handles PointerPressed on the drawing canvas: start new zone drawing
         private void Canvas_PointerPressed(object sender, PointerRoutedEventArgs e)
         {
             if (!_isDrawingMode) return;
@@ -630,11 +609,7 @@ namespace Doczonal
             DrawingCanvas.Children.Add(_currentGrid);
         }
 
-        /// <summary>
-        /// Handles pointer moved events on the canvas, resizing the zone currently being drawn.
-        /// </summary>
-        /// <param name="sender">The canvas that raised the event.</param>
-        /// <param name="e">The pointer event details.</param>
+        // Handles PointerMoved on the drawing canvas: update current drawing rectangle
         private void Canvas_PointerMoved(object sender, PointerRoutedEventArgs e)
         {
             if (!_isDrawing || _currentGrid == null) return;
@@ -661,11 +636,7 @@ namespace Doczonal
             _currentGrid.Height = Math.Max(MinZoneHeight, height);
         }
 
-        /// <summary>
-        /// Handles pointer released events on the canvas, finishing the drawing and prompting for a label.
-        /// </summary>
-        /// <param name="sender">The canvas that raised the event.</param>
-        /// <param name="e">The pointer event details.</param>
+        // Handles PointerReleased on the drawing canvas: finalize zone and prompt for label
         private async void Canvas_PointerReleased(object sender, PointerRoutedEventArgs e)
         {
             if (!_isDrawing) return;
@@ -704,11 +675,7 @@ namespace Doczonal
             _currentGrid = null;
         }
 
-        /// <summary>
-        /// Handles the manipulation delta event for rectangles, allowing them to be moved.
-        /// </summary>
-        /// <param name="sender">The UI element that was moved.</param>
-        /// <param name="e">The manipulation delta event details.</param>
+        // Handles manipulation delta for zones: move zones while preventing overlaps
         private void Rect_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
         {
             // Dragging existing zones is a select-mode-only interaction.
@@ -748,10 +715,7 @@ namespace Doczonal
             }
         }
 
-        /// <summary>
-        /// Prompts the user to enter a label for the newly created zone and adds the label to the canvas.
-        /// </summary>
-        /// <param name="grid">The grid representing the newly created zone.</param>
+        // Prompt user for zone label, type and optional date format; attach label to the zone and register in ViewModel
         private async System.Threading.Tasks.Task PromptForLabelAsync(Grid grid)
         {
             TextBox zoneLabelBox = new TextBox
@@ -766,7 +730,7 @@ namespace Doczonal
                 Margin = new Thickness(0, 0, 0, 10)
             };
 
-            // Only shown/used when zoneTypeBox's selection is "Date" (see SelectionChanged below).
+            // Only shown/used when zoneTypeBox's selection is "Date" 
             ComboBox zoneDateBox = new ComboBox
             {
                 PlaceholderText = "Choose date format",
@@ -784,12 +748,7 @@ namespace Doczonal
             StackPanel panel = new StackPanel();
             panel.Children.Add(zoneLabelBox);
             panel.Children.Add(zoneTypeBox);
-            // zoneDateBox is deliberately NOT added here — it's added/removed dynamically
-            // below, only while the dialog is open, so it only appears for "Date" zones.
-
-            // Runs live while the ContentDialog is open (unlike a check placed before
-            // ShowAsync, which would fire before any selection exists). Removing first
-            // avoids adding the box twice if the user flips between types repeatedly.
+           
             zoneTypeBox.SelectionChanged += (s, e) =>
             {
                 panel.Children.Remove(zoneDateBox);
@@ -816,7 +775,7 @@ namespace Doczonal
                 zoneTypeBox.SelectedItem != null)
             {
                 string zoneType = zoneTypeBox.SelectedItem.ToString();
-                // Null whenever the zone type isn't "Date" (box was never shown/selected).
+                // Null whenever the zone type isn't "Date" 
                 string dateFormat = zoneDateBox.SelectedItem?.ToString();
 
                 var labelBorder = new Border
@@ -841,7 +800,7 @@ namespace Doczonal
                     TextTrimming = TextTrimming.CharacterEllipsis
                 };
 
-                // Tooltip shows full name when label doesn't fit
+                // Tooltip for showing full name when label doesn't fit
                 Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(labelBorder, displayText);
 
                 labelBorder.Child = label;
