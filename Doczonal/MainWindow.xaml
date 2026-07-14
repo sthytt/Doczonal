@@ -43,13 +43,20 @@
                 Click="ClearZones_Click"
                 Icon="Clear"
                 Label="Clear All" />
-            <AppBarButton
-                x:Name="SettingsButton"
-                IsEnabled="False"
-                Click="Settings_Click"
-                Icon="Setting"
-                Label="Settings" />
-            <AppBarSeparator />
+            <AppBarButton Icon="Setting" Label="Settings">
+                <AppBarButton.Flyout>
+                    <MenuFlyout Placement="Bottom">
+                        <MenuFlyoutSubItem Text="Document Language">
+                            <MenuFlyoutSubItem.Icon>
+                                <SymbolIcon Symbol="World" />
+                            </MenuFlyoutSubItem.Icon>
+                            <RadioMenuFlyoutItem Text="Finnish" GroupName="DocumentLanguage" Click="Finnish_Click"  IsChecked="True" /> 
+                            <RadioMenuFlyoutItem Text="English" GroupName="DocumentLanguage" Click="English_Click" />
+                        </MenuFlyoutSubItem>
+                        <MenuFlyoutSeparator/>
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
             <AppBarButton
                 Margin="40,0,0,0"
                 Click="Done_Click"

@@ -48,6 +48,27 @@ namespace Doczonal
             this.InitializeComponent();
         }
 
+        private async void Settings_Click(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private async void DocumentLanguage_Click(object sender, RoutedEventArgs e)
+        {
+        }
+
+        // Handle document language settings
+        private void Finnish_Click(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private void English_Click(object sender, RoutedEventArgs e)
+        {
+        }
+
+        private void SetDocumentLanguage(string languageCode)
+        {
+        }
+
         // Handles Load button click: opens a file picker and loads selected image or first page of PDF for preview
         private async void LoadImage_Click(object sender, RoutedEventArgs e)
         {
