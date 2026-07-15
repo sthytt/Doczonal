@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -27,14 +28,14 @@ namespace Doczonal.Services
                         {
                             resultText = page.GetText();
                             float confidence = page.GetMeanConfidence();
-                            Console.WriteLine($"Confidence: {confidence}");
+                            Debug.WriteLine($"Confidence: {confidence}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"error : {ex.Message}");
+                Debug.WriteLine($"error : {ex.Message}");
             }
 
             return resultText;

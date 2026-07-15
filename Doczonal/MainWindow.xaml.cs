@@ -23,7 +23,7 @@ using Windows.Storage.Streams;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Pickers;
 using Windows.UI.WebUI;
-using Tesseract;
+using System.Diagnostics;
 
 namespace Doczonal
 {
@@ -161,7 +161,7 @@ namespace Doczonal
                     CloseButtonText = "OK",
                     XamlRoot = this.Content.XamlRoot
                 };
-                _ = noZonesDialog.ShowAsync();
+                await noZonesDialog.ShowAsync();
                 return;
             }
 
@@ -347,7 +347,7 @@ namespace Doczonal
                     catch (Exception ex)
                     {
                         row.Add(EscapeCsv("") );
-                        Console.WriteLine($"OCR error for {file.Path}: {ex.Message}");
+                        Debug.WriteLine($"OCR error for {file.Path}: {ex.Message}");
                     }
                 }
 
@@ -475,7 +475,7 @@ namespace Doczonal
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"PDF render error: {ex.Message}");
+                Debug.WriteLine($"PDF render error: {ex.Message}");
                 throw;
             }
         }
